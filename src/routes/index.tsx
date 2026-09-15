@@ -97,10 +97,15 @@ export const Route = createFileRoute("/")({
   component: Landing,
 });
 
-function LockedPreview() {
+function LockedPreview({ src }: { src: string }) {
   return (
     <div className="relative h-20 w-20 overflow-hidden rounded-xl border border-pink-500/30 bg-zinc-700 sm:h-24 sm:w-24">
-      <div className="private-blur-card absolute inset-0 bg-gradient-to-br from-zinc-500 via-zinc-700 to-zinc-900" />
+      <img
+        src={src}
+        alt=""
+        className="private-blur-card absolute inset-0 h-full w-full object-cover"
+      />
+      <div className="absolute inset-0 bg-black/20" />
       <div className="absolute inset-0 flex items-center justify-center text-xl text-white">🔒</div>
     </div>
   );
@@ -152,9 +157,9 @@ function Landing() {
         </a>
 
         <div className="mt-10 flex justify-center gap-3">
-          <LockedPreview />
-          <LockedPreview />
-          <LockedPreview />
+          <LockedPreview src="/preview1.jpg" />
+          <LockedPreview src="/preview2.jpg" />
+          <LockedPreview src="/preview3.jpg" />
         </div>
 
         <p className="mt-4 animate-pulse text-xs font-bold uppercase tracking-widest text-pink-400">
