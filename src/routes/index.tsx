@@ -99,14 +99,20 @@ export const Route = createFileRoute("/")({
 
 function LockedPreview({ src }: { src: string }) {
   return (
-    <div className="relative h-20 w-20 overflow-hidden rounded-xl border border-pink-500/30 bg-zinc-700 sm:h-24 sm:w-24">
+    <div className="relative h-[clamp(88px,28vw,128px)] w-[clamp(88px,28vw,128px)] overflow-hidden rounded-2xl border border-pink-500/30 bg-zinc-700">
       <img
         src={src}
         alt=""
-        className="private-blur-card absolute inset-0 h-full w-full object-cover"
+        className="absolute inset-0 h-full w-full object-cover"
+        style={{
+          filter: "blur(2px)",
+          transform: "scale(1.03)",
+        }}
       />
-      <div className="absolute inset-0 bg-black/20" />
-      <div className="absolute inset-0 flex items-center justify-center text-xl text-white">🔒</div>
+      <div className="absolute inset-0 bg-black/10" />
+      <div className="absolute inset-0 flex items-center justify-center text-2xl text-white drop-shadow-lg">
+        🔒
+      </div>
     </div>
   );
 }
@@ -156,7 +162,7 @@ function Landing() {
           Quero ver tudo agora 🔥
         </a>
 
-        <div className="mt-10 flex justify-center gap-3">
+        <div className="mt-10 -mx-3 flex justify-center gap-1.5 sm:mx-0 sm:gap-3">
           <LockedPreview src="/preview1.jpg" />
           <LockedPreview src="/preview2.jpg" />
           <LockedPreview src="/preview3.jpg" />
