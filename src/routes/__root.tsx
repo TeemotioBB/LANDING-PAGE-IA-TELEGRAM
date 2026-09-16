@@ -131,24 +131,29 @@ function RootShell({ children }: { children: ReactNode }) {
             `,
           }}
         />
+        {/*
+          IMPORTANT: this script is intentionally NOT async/defer.
+          The Parameter Builder must execute before the CTA can become interactive,
+          otherwise a very fast click from the Facebook/Instagram in-app browser can
+          arrive at Railway before _fbp exists. The script is preloaded above and is
+          small/cached by the CDN, so this removes the tracking race without adding
+          any wait to the CTA itself.
+        */}
+        <script
+          id="meta-capi-param-builder"
+          src="https://unpkg.com/meta-capi-param-builder-clientjs@1.3.2/dist/clientParamBuilder.bundle.js"
+        />
         <script
           dangerouslySetInnerHTML={{
             __html: `
-              (function(w,d){
-                if (w.clientParamBuilder || d.getElementById('meta-capi-param-builder')) return;
-                var s=d.createElement('script');
-                s.id='meta-capi-param-builder';
-                s.async=true;
-                s.src='https://unpkg.com/meta-capi-param-builder-clientjs@1.3.2/dist/clientParamBuilder.bundle.js';
-                s.onload=function(){
-                  try {
-                    if (w.clientParamBuilder && w.clientParamBuilder.processAndCollectAllParams) {
-                      w.clientParamBuilder.processAndCollectAllParams(w.location.href);
-                    }
-                  } catch (_) {}
-                };
-                (d.head || d.documentElement).appendChild(s);
-              })(window,document);
+              try {
+                if (window.clientParamBuilder && window.clientParamBuilder.processAndCollectAllParams) {
+                  // No await is needed for _fbp: Meta documents that getFbp() is
+                  // available immediately because _fbp is written before the first
+                  // asynchronous operation in this collection flow.
+                  window.clientParamBuilder.processAndCollectAllParams(window.location.href);
+                }
+              } catch (_) {}
             `,
           }}
         />
