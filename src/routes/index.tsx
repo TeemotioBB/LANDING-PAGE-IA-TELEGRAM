@@ -2,10 +2,18 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import mayaAsset from "@/assets/maya.jpg.asset.json";
 
+type CollectedMetaParams = Record<string, unknown> & {
+  _fbp?: unknown;
+  fbp?: unknown;
+  _fbc?: unknown;
+  fbc?: unknown;
+};
+
 type ClientParamBuilder = {
-  processAndCollectAllParams: (url?: string | null) => Promise<Record<string, string>>;
-  getFbp: () => string;
-  getFbc: () => string;
+  processAndCollectAllParams?: (url?: string | null) => unknown;
+  processAndCollectParams?: (url?: string | null) => CollectedMetaParams | null | undefined;
+  getFbp?: () => string | null | undefined;
+  getFbc?: () => string | null | undefined;
 };
 
 declare global {
@@ -15,8 +23,8 @@ declare global {
   }
 }
 
-// Todo clique no CTA continua passando pelo Railway para criar/transportar
-// o tracking antes de redirecionar o visitante ao Telegram.
+// Todo clique no CTA passa pelo Railway para criar/transportar o tracking
+// antes do redirecionamento ao Telegram.
 const TRACKING_REDIRECT_URL = "https://web-production-9d79b.up.railway.app/tracking/telegram/go";
 
 type TrackingPayload = {
@@ -35,37 +43,102 @@ function getCookie(name: string): string | null {
   );
 
   if (!match?.[1]) return null;
-  return decodeURIComponent(match[1]);
+
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
 }
 
-function prepareMetaParamsNoWait(): void {
+function asNonEmptyString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function runMetaBuilderWarmup(): void {
   if (typeof window === "undefined") return;
 
   const builder = window.clientParamBuilder;
   if (!builder) return;
 
   try {
-    // Biblioteca oficial da Meta. Não aguardamos a Promise: segundo a própria
-    // documentação, o _fbp é gravado antes da primeira operação assíncrona.
-    // Assim, o clique continua imediato e não faz fetch/await antes do redirect.
-    void builder.processAndCollectAllParams(window.location.href);
+    if (typeof builder.processAndCollectAllParams === "function") {
+      // Padrão usado pelas integrações oficiais da Meta: processa sem bloquear
+      // o CTA. O resultado útil é lido no clique por cookie/retorno/getFbp.
+      builder.processAndCollectAllParams(window.location.href);
+      return;
+    }
+
+    if (typeof builder.processAndCollectParams === "function") {
+      builder.processAndCollectParams(window.location.href);
+    }
   } catch {
-    // Tracking nunca pode impedir o CTA de funcionar.
+    // Tracking nunca pode impedir a landing de funcionar.
   }
 }
 
-function getBuilderValue(kind: "fbp" | "fbc"): string | null {
-  if (typeof window === "undefined") return null;
+function collectMetaIdsNow(): { fbp: string | null; fbc: string | null } {
+  if (typeof window === "undefined") {
+    return { fbp: null, fbc: null };
+  }
 
   const builder = window.clientParamBuilder;
-  if (!builder) return null;
+  let collected: CollectedMetaParams = {};
 
-  try {
-    const value = kind === "fbp" ? builder.getFbp() : builder.getFbc();
-    return value || null;
-  } catch {
-    return null;
+  if (builder) {
+    try {
+      // A própria integração oficial Meta/Facebook for WooCommerce usa
+      // processAndCollectParams() e aproveita o objeto retornado diretamente.
+      // Isso evita depender somente de o cookie já ter sido persistido.
+      if (typeof builder.processAndCollectParams === "function") {
+        const result = builder.processAndCollectParams(window.location.href);
+        if (result && typeof result === "object") {
+          collected = result;
+        }
+      } else if (typeof builder.processAndCollectAllParams === "function") {
+        builder.processAndCollectAllParams(window.location.href);
+      }
+    } catch {
+      // Segue para os fallbacks abaixo.
+    }
   }
+
+  let builderFbp: string | null = null;
+  let builderFbc: string | null = null;
+
+  if (builder) {
+    try {
+      if (typeof builder.getFbp === "function") {
+        builderFbp = asNonEmptyString(builder.getFbp());
+      }
+    } catch {
+      builderFbp = null;
+    }
+
+    try {
+      if (typeof builder.getFbc === "function") {
+        builderFbc = asNonEmptyString(builder.getFbc());
+      }
+    } catch {
+      builderFbc = null;
+    }
+  }
+
+  // Mesma prioridade usada pela integração oficial da Meta:
+  // cookie real -> valor retornado pelo Parameter Builder -> getter do Builder.
+  const fbp =
+    getCookie("_fbp") ||
+    asNonEmptyString(collected._fbp) ||
+    asNonEmptyString(collected.fbp) ||
+    builderFbp;
+
+  const fbc =
+    getCookie("_fbc") ||
+    asNonEmptyString(collected._fbc) ||
+    asNonEmptyString(collected.fbc) ||
+    builderFbc;
+
+  return { fbp, fbc };
 }
 
 function getTrackingDataNow(): TrackingPayload {
@@ -80,15 +153,8 @@ function getTrackingDataNow(): TrackingPayload {
   }
 
   const urlParams = new URLSearchParams(window.location.search);
-
-  // Sinal real do clique recebido na URL quando a visita veio da Meta.
   const fbclid = urlParams.get("fbclid") || null;
-
-  // Usa os IDs criados/gerenciados pela biblioteca oficial da Meta quando
-  // disponível. Se ela ainda não carregou, faz fallback para os cookies reais.
-  // Não fabricamos fbc/fbp manualmente nesta landing.
-  const fbc = getBuilderValue("fbc") || getCookie("_fbc");
-  const fbp = getBuilderValue("fbp") || getCookie("_fbp");
+  const { fbp, fbc } = collectMetaIdsNow();
 
   return {
     fbclid,
@@ -117,9 +183,7 @@ function useTelegramLink(): { href: string } {
   const [href, setHref] = useState(TRACKING_REDIRECT_URL);
 
   useEffect(() => {
-    // Dispara a coleta oficial da Meta assim que a página fica interativa, mas
-    // sem aguardar nada. O CTA continua sem atraso.
-    prepareMetaParamsNoWait();
+    runMetaBuilderWarmup();
     setHref(buildTrackingRedirectHref());
   }, []);
 
@@ -197,11 +261,9 @@ function Landing() {
         <a
           href={telegramHref}
           onClick={(event) => {
-            // Reforça a coleta oficial no exato momento do clique. Não usamos
-            // await: o _fbp é disponibilizado sincronamente pelo Parameter Builder
-            // antes da parte assíncrona, então o redirecionamento não espera rede.
+            // Coleta novamente no clique usando o mesmo padrão da integração
+            // oficial da Meta, sem await/fetch e sem atrasar o redirect.
             event.preventDefault();
-            prepareMetaParamsNoWait();
             const trackingUrl = buildTrackingRedirectHref();
             window.location.assign(trackingUrl);
           }}
