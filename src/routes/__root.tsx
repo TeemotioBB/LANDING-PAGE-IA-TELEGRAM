@@ -83,6 +83,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:site", content: "@Lovable" },
     ],
     links: [
+      { rel: "preconnect", href: "https://unpkg.com" },
+      { rel: "dns-prefetch", href: "https://unpkg.com" },
+      {
+        rel: "preload",
+        as: "script",
+        href: "https://unpkg.com/meta-capi-param-builder-clientjs@1.3.2/dist/clientParamBuilder.bundle.js",
+      },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       {
         rel: "preconnect",
@@ -121,6 +128,27 @@ function RootShell({ children }: { children: ReactNode }) {
               (window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
               fbq("init", "1109117488437190");
               fbq("track", "PageView");
+            `,
+          }}
+        />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function(w,d){
+                if (w.clientParamBuilder || d.getElementById('meta-capi-param-builder')) return;
+                var s=d.createElement('script');
+                s.id='meta-capi-param-builder';
+                s.async=true;
+                s.src='https://unpkg.com/meta-capi-param-builder-clientjs@1.3.2/dist/clientParamBuilder.bundle.js';
+                s.onload=function(){
+                  try {
+                    if (w.clientParamBuilder && w.clientParamBuilder.processAndCollectAllParams) {
+                      w.clientParamBuilder.processAndCollectAllParams(w.location.href);
+                    }
+                  } catch (_) {}
+                };
+                (d.head || d.documentElement).appendChild(s);
+              })(window,document);
             `,
           }}
         />
