@@ -8,9 +8,8 @@ declare global {
   }
 }
 
-// MANTIDO EXATAMENTE DO PROJETO ATUAL:
-// todo clique no CTA passa pelo Railway para criar/transportar o tracking
-// antes de redirecionar o visitante ao Telegram.
+// Todo clique no CTA continua passando pelo Railway para criar/transportar
+// o tracking antes de redirecionar o visitante ao Telegram.
 const TRACKING_REDIRECT_URL = "https://web-production-9d79b.up.railway.app/tracking/telegram/go";
 
 type TrackingPayload = {
@@ -23,31 +22,44 @@ type TrackingPayload = {
 
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null;
+
   const match = document.cookie.match(
     new RegExp("(?:^|; )" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "=([^;]*)"),
   );
+
   if (!match?.[1]) return null;
   return decodeURIComponent(match[1]);
 }
 
 function getTrackingDataNow(): TrackingPayload {
   if (typeof window === "undefined") {
-    return { fbclid: null, fbc: null, fbp: null, page_url: null, referrer: null };
+    return {
+      fbclid: null,
+      fbc: null,
+      fbp: null,
+      page_url: null,
+      referrer: null,
+    };
   }
 
   const urlParams = new URLSearchParams(window.location.search);
-  const fbclid = urlParams.get("fbclid") ?? null;
 
-  const fbcCookie = getCookie("_fbc");
-  let fbc: string | null = fbcCookie;
-  if (!fbc && fbclid) {
-    fbc = `fb.1.${Date.now()}.${fbclid}`;
-  }
+  // Sinal real do clique recebido na URL quando a visita veio da Meta.
+  const fbclid = urlParams.get("fbclid") || null;
+
+  // IMPORTANTE:
+  // - NÃO criamos _fbp artificialmente.
+  // - NÃO criamos _fbc artificialmente na landing.
+  // - Só enviamos os cookies que realmente existem no navegador.
+  // Se _fbc não existir, mas houver um fbclid real, o backend já possui
+  // a lógica para derivar o fbc desse clique real.
+  const fbc = getCookie("_fbc");
+  const fbp = getCookie("_fbp");
 
   return {
     fbclid,
     fbc,
-    fbp: getCookie("_fbp"),
+    fbp,
     page_url: window.location.href || null,
     referrer: document.referrer || null,
   };
@@ -71,6 +83,8 @@ function useTelegramLink(): { href: string } {
   const [href, setHref] = useState(TRACKING_REDIRECT_URL);
 
   useEffect(() => {
+    // Apenas monta a URL com os sinais que já existem.
+    // Não há fetch, await, timeout ou espera pelo Pixel.
     setHref(buildTrackingRedirectHref());
   }, []);
 
@@ -122,7 +136,6 @@ function Landing() {
 
   return (
     <main className="private-landing relative flex min-h-dvh w-full flex-col justify-center overflow-hidden bg-black text-white">
-      {/* A foto continua sendo a mesma do projeto atual. */}
       <img
         src={mayaAsset.url}
         alt="Maya"
@@ -130,7 +143,6 @@ function Landing() {
         className="pointer-events-none absolute inset-0 h-full w-full scale-[1.08] object-cover object-[center_20%]"
       />
 
-      {/* Mesmo conceito do layout enviado: imagem em destaque em cima e fechamento escuro embaixo. */}
       <div className="private-bg-overlay pointer-events-none absolute inset-0" />
       <div className="pointer-events-none absolute inset-0 bg-black/15" />
 
@@ -150,8 +162,9 @@ function Landing() {
         <a
           href={telegramHref}
           onClick={(event) => {
-            // IMPORTANTE: preserva o tracking real do projeto atual.
-            // Não trocar este trecho por link direto para t.me.
+            // Releitura instantânea no clique: se o Pixel criou _fbp/_fbc
+            // depois do carregamento inicial, pegamos o valor mais recente.
+            // Não existe await/fetch/timeout antes do redirecionamento.
             event.preventDefault();
             const trackingUrl = buildTrackingRedirectHref();
             window.location.assign(trackingUrl);
