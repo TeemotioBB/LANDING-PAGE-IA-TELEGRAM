@@ -2,9 +2,16 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import mayaAsset from "@/assets/maya.jpg.asset.json";
 
+type ClientParamBuilder = {
+  processAndCollectAllParams: (url?: string | null) => Promise<Record<string, string>>;
+  getFbp: () => string;
+  getFbc: () => string;
+};
+
 declare global {
   interface Window {
     fbq?: (...args: unknown[]) => void;
+    clientParamBuilder?: ClientParamBuilder;
   }
 }
 
@@ -31,6 +38,36 @@ function getCookie(name: string): string | null {
   return decodeURIComponent(match[1]);
 }
 
+function prepareMetaParamsNoWait(): void {
+  if (typeof window === "undefined") return;
+
+  const builder = window.clientParamBuilder;
+  if (!builder) return;
+
+  try {
+    // Biblioteca oficial da Meta. Não aguardamos a Promise: segundo a própria
+    // documentação, o _fbp é gravado antes da primeira operação assíncrona.
+    // Assim, o clique continua imediato e não faz fetch/await antes do redirect.
+    void builder.processAndCollectAllParams(window.location.href);
+  } catch {
+    // Tracking nunca pode impedir o CTA de funcionar.
+  }
+}
+
+function getBuilderValue(kind: "fbp" | "fbc"): string | null {
+  if (typeof window === "undefined") return null;
+
+  const builder = window.clientParamBuilder;
+  if (!builder) return null;
+
+  try {
+    const value = kind === "fbp" ? builder.getFbp() : builder.getFbc();
+    return value || null;
+  } catch {
+    return null;
+  }
+}
+
 function getTrackingDataNow(): TrackingPayload {
   if (typeof window === "undefined") {
     return {
@@ -47,14 +84,11 @@ function getTrackingDataNow(): TrackingPayload {
   // Sinal real do clique recebido na URL quando a visita veio da Meta.
   const fbclid = urlParams.get("fbclid") || null;
 
-  // IMPORTANTE:
-  // - NÃO criamos _fbp artificialmente.
-  // - NÃO criamos _fbc artificialmente na landing.
-  // - Só enviamos os cookies que realmente existem no navegador.
-  // Se _fbc não existir, mas houver um fbclid real, o backend já possui
-  // a lógica para derivar o fbc desse clique real.
-  const fbc = getCookie("_fbc");
-  const fbp = getCookie("_fbp");
+  // Usa os IDs criados/gerenciados pela biblioteca oficial da Meta quando
+  // disponível. Se ela ainda não carregou, faz fallback para os cookies reais.
+  // Não fabricamos fbc/fbp manualmente nesta landing.
+  const fbc = getBuilderValue("fbc") || getCookie("_fbc");
+  const fbp = getBuilderValue("fbp") || getCookie("_fbp");
 
   return {
     fbclid,
@@ -83,8 +117,9 @@ function useTelegramLink(): { href: string } {
   const [href, setHref] = useState(TRACKING_REDIRECT_URL);
 
   useEffect(() => {
-    // Apenas monta a URL com os sinais que já existem.
-    // Não há fetch, await, timeout ou espera pelo Pixel.
+    // Dispara a coleta oficial da Meta assim que a página fica interativa, mas
+    // sem aguardar nada. O CTA continua sem atraso.
+    prepareMetaParamsNoWait();
     setHref(buildTrackingRedirectHref());
   }, []);
 
@@ -162,10 +197,11 @@ function Landing() {
         <a
           href={telegramHref}
           onClick={(event) => {
-            // Releitura instantânea no clique: se o Pixel criou _fbp/_fbc
-            // depois do carregamento inicial, pegamos o valor mais recente.
-            // Não existe await/fetch/timeout antes do redirecionamento.
+            // Reforça a coleta oficial no exato momento do clique. Não usamos
+            // await: o _fbp é disponibilizado sincronamente pelo Parameter Builder
+            // antes da parte assíncrona, então o redirecionamento não espera rede.
             event.preventDefault();
+            prepareMetaParamsNoWait();
             const trackingUrl = buildTrackingRedirectHref();
             window.location.assign(trackingUrl);
           }}
