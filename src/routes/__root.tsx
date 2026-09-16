@@ -5,6 +5,9 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
+const META_PARAM_BUILDER_URL =
+  "https://capi-automation.s3.us-east-2.amazonaws.com/public/client_js/capiParamBuilder/clientParamBuilder.bundle.js";
+
 function NotFoundComponent() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -83,12 +86,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:site", content: "@Lovable" },
     ],
     links: [
-      { rel: "preconnect", href: "https://unpkg.com" },
-      { rel: "dns-prefetch", href: "https://unpkg.com" },
+      { rel: "preconnect", href: "https://capi-automation.s3.us-east-2.amazonaws.com" },
+      { rel: "dns-prefetch", href: "https://capi-automation.s3.us-east-2.amazonaws.com" },
       {
         rel: "preload",
         as: "script",
-        href: "https://unpkg.com/meta-capi-param-builder-clientjs@1.3.2/dist/clientParamBuilder.bundle.js",
+        href: META_PARAM_BUILDER_URL,
       },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       {
@@ -132,25 +135,21 @@ function RootShell({ children }: { children: ReactNode }) {
           }}
         />
         {/*
-          IMPORTANT: this script is intentionally NOT async/defer.
-          The Parameter Builder must execute before the CTA can become interactive,
-          otherwise a very fast click from the Facebook/Instagram in-app browser can
-          arrive at Railway before _fbp exists. The script is preloaded above and is
-          small/cached by the CDN, so this removes the tracking race without adding
-          any wait to the CTA itself.
+          Bundle oficial do Parameter Builder usado pela própria integração Meta/GTM.
+          Ele é carregado antes da landing ficar interativa para que o CTA não precise
+          fazer await/fetch nem esperar rede no momento do clique.
         */}
         <script
           id="meta-capi-param-builder"
-          src="https://unpkg.com/meta-capi-param-builder-clientjs@1.3.2/dist/clientParamBuilder.bundle.js"
+          src={META_PARAM_BUILDER_URL}
         />
         <script
           dangerouslySetInnerHTML={{
             __html: `
               try {
                 if (window.clientParamBuilder && window.clientParamBuilder.processAndCollectAllParams) {
-                  // No await is needed for _fbp: Meta documents that getFbp() is
-                  // available immediately because _fbp is written before the first
-                  // asynchronous operation in this collection flow.
+                  // Inicializa cedo; no clique o index.tsx também aproveita o retorno
+                  // síncrono de processAndCollectParams(), os cookies e getFbp/getFbc.
                   window.clientParamBuilder.processAndCollectAllParams(window.location.href);
                 }
               } catch (_) {}
